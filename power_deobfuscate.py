@@ -10,6 +10,9 @@ r_bstr = "(\(("+ r_str + ")\))|(" + r_str + ")"
 r_format = "\(\s*[\"']((" + r_pos + ")+[\"']\s*)-f\s*(((" + r_str + ")\s*,)+\s*(" + r_str + "))\s*\)"
 r_concat = "(\s*((" + r_str + ")\s*\+)+\s*(" + r_str + "))\s*"
 r_replace = "(\((" + r_bstr + ")\s*-replace\s*(" + r_bstr + ")\s*,\s*(" + r_bstr + ")\s*\))"
+r_variable_decl = "[.&]\(?('set'|'set-item'|'si'|'set-variable'|'sv')\)?\s*\(?'(variable:)?([^']*)'\)?\s*\(\s*([^\)\s]*)\s*\)\s*;"
+r_variable_deref = "\$\{(VARIABLE_NAME)\}"  # placeholder gets replaced
+r_variable_deref_dir = "\(\s*[.&]\(?'(dir|ls|get-variable|gv)'\)?\s*\(?'(variable:)?VARIABLE_NAME'(\s*\)){0,2}\.\"value\""
 
 r_no_newline = "(([^';]*'[^']*(;)[^']*'[^';]*)|([^\";]*\"[^\"]*(;)[^\"]*\"[^\";]*))(.*)$"
 r_newline = "([^;]*);(.+)$"
@@ -67,6 +70,38 @@ def deobfuscate_replace(text):
         text = text.replace(obfuscated, "'"+out+"'")
     return text
 
+def deobfuscate_variable(text):
+    # .'set' ('Variable:a') ('abc')
+    matches = re.finditer(r_variable_decl, text, re.IGNORECASE)
+    for _, match in enumerate(matches):
+        obfuscated = match.group()
+
+        # remove declaration
+        # this can be a problem if not all references are replaced
+        text = text.replace(obfuscated, "").strip()
+
+        # replace all references
+        name = match.groups()[2]
+        value = match.groups()[3]
+        text = replace_variable(text, name, value)
+    return text
+
+def replace_variable(text, variable, value):
+    # ${VARIABLE_NAME} -> 'abc'
+    matches = re.finditer(r_variable_deref.replace('VARIABLE_NAME',variable), text, re.IGNORECASE)
+    for _, match in enumerate(matches):
+        obfuscated = match.group()
+        text = text.replace(obfuscated,value)
+
+    # (&'dir' 'Variable:VARIABLE_NAME)."Value" -> 'abc'
+    matches = re.finditer(r_variable_deref_dir.replace('VARIABLE_NAME',variable), text, re.IGNORECASE)
+    for _, match in enumerate(matches):
+        obfuscated = match.group()
+        text = text.replace(obfuscated,value)
+
+    return text 
+
+
 def insert_newlines(text):
     remaining = text
     out = ""
@@ -98,6 +133,7 @@ def deobfuscate(text):
         text = deobfuscate_format(text)
         text = deobfuscate_concat(text)
         text = deobfuscate_replace(text)
+        text = deobfuscate_variable(text)
     text = insert_newlines(text)
     return text
 
