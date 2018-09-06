@@ -147,5 +147,6 @@ if __name__ == "__main__":
             text = f_in.read()
     except:
         print("error reading file")
+    text = text.replace('\n', '').replace('\r','')
     text = deobfuscate(text)
     print(text)
